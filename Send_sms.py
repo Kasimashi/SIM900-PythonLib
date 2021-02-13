@@ -1,48 +1,92 @@
-#!/usr/bin/python3
-import serial
-import RPi.GPIO as GPIO
-import os, time
+﻿#!/usr/bin/python3
+import logging
 
-GPIO.setmode(GPIO.BOARD)
+from Shared import initializeLogs, initializeUartPort, baseOperations
+from lib.sim900.smshandler import SimGsmSmsHandler, SimSmsPduCompiler
 
-# Enable Serial Communication
-port = serial.Serial("/dev/ttyS0", baudrate=9600, timeout=1)
 
-# Transmitting AT Commands to the Modem
-# '\r\n' indicates the Enter key
+def printScaPlusPdu(pdu, logger):
+    # printing SCA+PDU just for debug
+    d = pdu.compile()
+    if d is None:
+        return False
 
-port.write(str.encode("AT"+"\r\n"))
-rcv = port.read(10)
-print (rcv)
-time.sleep(1)
+    for (sca, pdu, ) in d:
+        logger.info("sendSms(): sca + pdu = \"{0}\"".format(sca + pdu))
 
-port.write(str.encode('ATE0'+'\r\n'))      # Disable the Echo
-rcv = port.read(10)
-print (rcv)
-time.sleep(1)
 
-port.write(str.encode('AT+CMGF=1'+'\r\n') ) # Select Message format as Text mode
-rcv = port.read(10)
-print (rcv)
-time.sleep(1)
+def sendSms(sms, pdu, logger):
+    # just for debug printing all SCA + PDU parts
+    printScaPlusPdu(pdu, logger)
 
-port.write(str.encode('AT+CNMI=2,1,0,0,0'+'\r\n'))  # New SMS Message Indications
-rcv = port.read(10)
-print (rcv)
-time.sleep(1)
+    if not sms.sendPduMessage(pdu, 1):
+        logger.error("error sending SMS: {0}".format(sms.errorText))
+        return False
 
-# Sending a message to a particular Number
+    return True
 
-port.write(str.encode('AT+CMGS="+33XXXXXXXXX"'+'\r\n'))
-rcv = port.read(10)
-print (rcv)
-time.sleep(1)
 
-port.write(str.encode('Yes !!'+'\r\n'))  # Message
-rcv = port.read(10)
-print (rcv)
+def main():
+    """
+    Tests SMS sending.
 
-port.write(str.encode("\x1A")) # Enable to send SMS
-for i in range(10):
-    rcv = port.read(10)
-    print (rcv)
+    :return: true if everything was OK, otherwise returns false
+    """
+
+    print("Please, enter phone number")
+    phone_number = input()
+
+    print("Please, enter sms text: ")
+    sms_text = input()
+
+    # logging levels
+    CONSOLE_LOGGER_LEVEL    = logging.INFO
+    LOGGER_LEVEL            = logging.INFO
+
+    COMPORT_NAME = "/dev/ttyS0"
+
+    # WARN: scecify recipient number here!!!
+    TARGET_PHONE_NUMBER     = phone_number
+
+    # You can specify SMS center number, but it's not necessary. If you will not specify SMS center number, SIM900
+    # module will get SMS center number from memory
+    # SMS_CENTER_NUMBER       = "+1 050 123 45 67"
+
+    SMS_CENTER_NUMBER       = ""
+
+    # adding & initializing port object
+    port = initializeUartPort(portName=COMPORT_NAME)
+
+    # initializing logger
+    (formatter, logger, consoleLogger,) = initializeLogs(LOGGER_LEVEL, CONSOLE_LOGGER_LEVEL)
+
+    # making base operations
+    d = baseOperations(port, logger)
+    if d is None:
+        return False
+
+    (gsm, imei) = d
+
+    # creating object for SMS sending
+    sms = SimGsmSmsHandler(port, logger)
+
+    # ASCII
+    logger.info("sending sms")
+    pduHelper = SimSmsPduCompiler(
+        SMS_CENTER_NUMBER,
+        TARGET_PHONE_NUMBER,
+        "{}\n{}".format(
+            sms_text,
+            "This is a computer do no reply!"
+        )
+    )
+    if not sendSms(sms, pduHelper, logger):
+        return False
+
+    gsm.closePort()
+    return True
+
+
+if __name__ == "__main__":
+    main()
+    print("DONE")
