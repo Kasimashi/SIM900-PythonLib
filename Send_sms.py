@@ -26,18 +26,12 @@ def sendSms(sms, pdu, logger):
     return True
 
 
-def main():
+def Sending(phone_number,sms_text):
     """
     Tests SMS sending.
 
     :return: true if everything was OK, otherwise returns false
     """
-
-    print("Please, enter phone number")
-    phone_number = input()
-
-    print("Please, enter sms text: ")
-    sms_text = input()
 
     # logging levels
     CONSOLE_LOGGER_LEVEL    = logging.INFO
@@ -84,9 +78,8 @@ def main():
         return False
 
     gsm.closePort()
+
+    print("DONE")
+
     return True
 
-
-if __name__ == "__main__":
-    main()
-    print("DONE")
